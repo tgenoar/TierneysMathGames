@@ -15,11 +15,13 @@
       gap: 0px;
       margin: 1rem auto;
       justify-content: center;
+      background-color: white;
+      grid-auto-flow: row;
     }
     .cell {
       width: 80px;
       height: 80px;
-      border: 2px solid #ccc;
+      border: 2px solid black; /* black grid lines */
       background-color: white;
     }
     .block {
@@ -27,20 +29,13 @@
       height: 80px;
       margin-bottom: 10px;
       cursor: grab;
+      user-select: none;
     }
-.grid {
-  display: grid;
-  gap: 0px;
-  margin: 1rem auto;
-  justify-content: center;
-  background-color: white;
-}
-.cell {
-  width: 80px;
-  height: 80px;
-  border: 2px solid black; /* make the grid lines black */
-  background-color: white; /* keep cell background white */
-}
+    .grid .block {
+      margin-bottom: 0;
+      margin-right: 0;
+      cursor: default;
+    }
     .blue { background-color: lightblue; }
     .green { background-color: lightgreen; }
     .piles {
@@ -54,14 +49,17 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      user-select: none;
     }
     .row-block {
       display: flex;
       flex-direction: row;
+      user-select: none;
     }
     .row-block .block {
       margin-bottom: 0;
       margin-right: 2px;
+      cursor: grab;
     }
     .equation {
       font-size: 2rem;
@@ -71,6 +69,12 @@
       width: 50px;
       font-size: 2rem;
       text-align: center;
+    }
+    .dragging-clone {
+      pointer-events: none;
+      opacity: 0.8;
+      z-index: 1000;
+      position: fixed;
     }
   </style>
 </head>
@@ -96,28 +100,22 @@
       let rows = 1;
       let filledCells = 0;
 
+      // Dragging state data
+      let draggingData = null;
+
       function createBlock(color) {
         const block = document.createElement('div');
         block.className = `block ${color}`;
-        block.draggable = true;
-        block.addEventListener('dragstart', (e) => {
-          e.dataTransfer.setData('text/plain', color);
-        });
         return block;
       }
 
       function createRowBlock() {
         const row = document.createElement('div');
         row.className = 'row-block';
-        row.draggable = true;
         for (let i = 0; i < 5; i++) {
           const b = createBlock('green');
-          b.draggable = false;
           row.appendChild(b);
         }
-        row.addEventListener('dragstart', (e) => {
-          e.dataTransfer.setData('text/plain', 'row-green');
-        });
         return row;
       }
 
@@ -132,37 +130,59 @@
           cell.className = 'cell';
           cell.dataset.index = i;
 
-          cell.addEventListener('dragover', (e) => e.preventDefault());
-          cell.addEventListener('drop', (e) => {
-            const color = e.dataTransfer.getData('text');
+          cell.addEventListener('pointerover', (e) => {
+            e.preventDefault();
+          });
+
+          cell.addEventListener('pointerup', (e) => {
+            if (!draggingData) return;
+            // Drop logic
+            const color = draggingData.color;
+
+            if (filledCells >= totalCells) {
+              alert("Too many tiles!");
+              cleanupDrag();
+              return;
+            }
 
             if (!cell.firstChild) {
               if (color === 'green') {
                 const droppedBlock = createBlock('green');
-                droppedBlock.draggable = false;
                 cell.appendChild(droppedBlock);
                 filledCells++;
-              }
-              if (color === 'row-green') {
-                // Fill the whole row
+                cleanupDrag();
+              } else if (color === 'row-green') {
+                // Fill the whole row if enough space
                 const rowIndex = Math.floor(i / (totalCells / rows));
+                let freeSpaces = 0;
+                for (let j = 0; j < totalCells / rows; j++) {
+                  const index = rowIndex * (totalCells / rows) + j;
+                  if (!grid.children[index].firstChild) freeSpaces++;
+                }
+                if (freeSpaces < 5 || filledCells + 5 > totalCells) {
+                  alert("Too many tiles!");
+                  cleanupDrag();
+                  return;
+                }
                 for (let j = 0; j < totalCells / rows; j++) {
                   const index = rowIndex * (totalCells / rows) + j;
                   const targetCell = grid.children[index];
                   if (!targetCell.firstChild) {
                     const b = createBlock('green');
-                    b.draggable = false;
                     targetCell.appendChild(b);
                     filledCells++;
                   }
                 }
+                cleanupDrag();
               }
+            } else {
+              alert("Too many tiles!");
+              cleanupDrag();
             }
           });
 
           if (i < startingBlue) {
             const blueBlock = createBlock('blue');
-            blueBlock.draggable = false;
             cell.appendChild(blueBlock);
           }
 
@@ -171,26 +191,32 @@
       }
 
       function setupPiles(showSingles = true, showRowPile = false) {
-  piles.innerHTML = '';
+        piles.innerHTML = '';
 
-  if (showSingles) {
-    const greenPile = document.createElement('div');
-    greenPile.className = 'pile';
-    greenPile.innerHTML = '<strong>Add Tiles</strong>';
-    for (let i = 0; i < 1; i++) {  // You can set this to any fixed number
-      greenPile.appendChild(createBlock('green'));
-    }
-    piles.appendChild(greenPile);
-  }
+        if (showSingles) {
+          const greenPile = document.createElement('div');
+          greenPile.className = 'pile';
+          greenPile.innerHTML = '<strong>Add Tiles</strong>';
+          const singleBlock = createBlock('green');
+          singleBlock.setAttribute('data-color', 'green');
+          singleBlock.style.cursor = 'grab';
+          singleBlock.addEventListener('pointerdown', pointerDownHandler);
+          greenPile.appendChild(singleBlock);
+          piles.appendChild(greenPile);
+        }
 
-  if (showRowPile) {
-    const rowPile = document.createElement('div');
-    rowPile.className = 'pile';
-    rowPile.innerHTML = '<strong>Add 5 Tiles</strong>';
-    rowPile.appendChild(createRowBlock());
-    piles.appendChild(rowPile);
-  }
-}
+        if (showRowPile) {
+          const rowPile = document.createElement('div');
+          rowPile.className = 'pile';
+          rowPile.innerHTML = '<strong>Add 5 Tiles</strong>';
+          const rowBlock = createRowBlock();
+          rowBlock.setAttribute('data-color', 'row-green');
+          rowBlock.style.cursor = 'grab';
+          rowBlock.addEventListener('pointerdown', pointerDownHandler);
+          piles.appendChild(rowPile);
+          rowPile.appendChild(rowBlock);
+        }
+      }
 
       function showEquation(startingBlue, total) {
         equation.innerHTML = `${startingBlue} + <input class="answer" id="userAnswer"> = ${total}`;
@@ -207,19 +233,91 @@
       }
 
       function startGame(size) {
-  totalCells = size;
-  rows = size === 10 ? 2 : 1;
-  const startingBlue = Math.floor(Math.random() * size);
-  setupGrid(startingBlue);
+        totalCells = size;
+        rows = size === 10 ? 2 : 1;
+        const startingBlue = Math.floor(Math.random() * size);
+        setupGrid(startingBlue);
 
-  if (size === 5) {
-    setupPiles(true, false); // Only show single-tile pile
-  } else {
-    setupPiles(true, true);  // Show both single and row pile
-  }
+        if (size === 5) {
+          setupPiles(true, false); // Only show single-tile pile
+        } else {
+          setupPiles(true, true);  // Show both single and row pile
+        }
 
-  showEquation(startingBlue, size);
-}
+        showEquation(startingBlue, size);
+      }
+
+      // Drag handlers for both mouse and touch (pointer events)
+
+      function pointerDownHandler(e) {
+        e.preventDefault();
+        if (draggingData) return; // already dragging
+
+        const target = e.currentTarget;
+        const color = target.getAttribute('data-color');
+
+        // Create a clone to drag visually
+        const clone = target.cloneNode(true);
+
+        clone.style.position = 'fixed';
+        clone.style.left = e.clientX - 40 + 'px';
+        clone.style.top = e.clientY - 40 + 'px';
+        clone.style.cursor = 'grabbing';
+
+        if (color === 'row-green') {
+          clone.style.width = '410px'; // 5 * 80px + 4 * 2px margins
+          clone.style.height = '80px';
+          clone.style.display = 'flex';
+          clone.style.flexWrap = 'nowrap';
+          clone.style.gap = '2px';
+        } else {
+          clone.style.width = '80px';
+          clone.style.height = '80px';
+        }
+
+        clone.classList.add('dragging-clone');
+        document.body.appendChild(clone);
+
+        draggingData = {
+          color,
+          originalElement: target,
+          clone,
+          offsetX: e.clientX,
+          offsetY: e.clientY,
+        };
+
+        window.addEventListener('pointermove', pointerMoveHandler);
+        window.addEventListener('pointerup', pointerUpHandler);
+        window.addEventListener('pointercancel', pointerCancelHandler);
+      }
+
+      function pointerMoveHandler(e) {
+        if (!draggingData) return;
+
+        e.preventDefault();
+
+        draggingData.clone.style.left = e.clientX - 40 + 'px';
+        draggingData.clone.style.top = e.clientY - 40 + 'px';
+      }
+
+      function cleanupDrag() {
+        if (draggingData) {
+          if (draggingData.clone && draggingData.clone.parentNode) {
+            draggingData.clone.parentNode.removeChild(draggingData.clone);
+          }
+          draggingData = null;
+        }
+        window.removeEventListener('pointermove', pointerMoveHandler);
+        window.removeEventListener('pointerup', pointerUpHandler);
+        window.removeEventListener('pointercancel', pointerCancelHandler);
+      }
+
+      function pointerUpHandler(e) {
+        cleanupDrag();
+      }
+      function pointerCancelHandler(e) {
+        cleanupDrag();
+      }
 
       make5Btn.addEventListener('click', () => startGame(5));
       make10Btn.addEventListener('click', () => startGame(10));
@@ -227,4 +325,3 @@
   </script>
 </body>
 </html>
-
