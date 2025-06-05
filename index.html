@@ -87,6 +87,10 @@
   <div class="grid" id="grid"></div>
   <div class="piles" id="piles"></div>
   <div class="equation" id="equation"></div>
+  <!-- Added Check Answer Button -->
+  <div style="margin-top: 1rem;">
+    <button id="checkAnswerBtn">Check Answer</button>
+  </div>
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -95,10 +99,13 @@
       const equation = document.getElementById('equation');
       const make5Btn = document.getElementById('make5Btn');
       const make10Btn = document.getElementById('make10Btn');
+      const checkAnswerBtn = document.getElementById('checkAnswerBtn');
 
       let totalCells = 5;
       let rows = 1;
       let filledCells = 0;
+      let startingBlueGlobal = 0;
+      let totalGlobal = 0;
 
       // Dragging state data
       let draggingData = null;
@@ -136,7 +143,6 @@
 
           cell.addEventListener('pointerup', (e) => {
             if (!draggingData) return;
-            // Drop logic
             const color = draggingData.color;
 
             if (filledCells >= totalCells) {
@@ -152,20 +158,23 @@
                 filledCells++;
                 cleanupDrag();
               } else if (color === 'row-green') {
-                // Fill the whole row if enough space
-                const rowIndex = Math.floor(i / (totalCells / rows));
+                const cellsPerRow = totalCells / rows;
+                const rowIndex = Math.floor(i / cellsPerRow);
+
+                // Check if enough free spaces for whole row
                 let freeSpaces = 0;
-                for (let j = 0; j < totalCells / rows; j++) {
-                  const index = rowIndex * (totalCells / rows) + j;
+                for (let j = 0; j < cellsPerRow; j++) {
+                  const index = rowIndex * cellsPerRow + j;
                   if (!grid.children[index].firstChild) freeSpaces++;
                 }
-                if (freeSpaces < 5 || filledCells + 5 > totalCells) {
-                  alert("Too many tiles!");
+                if (freeSpaces < cellsPerRow || filledCells + cellsPerRow > totalCells) {
+                  alert("Not enough space to place the 5-tile row here!");
                   cleanupDrag();
                   return;
                 }
-                for (let j = 0; j < totalCells / rows; j++) {
-                  const index = rowIndex * (totalCells / rows) + j;
+                // Place the row blocks
+                for (let j = 0; j < cellsPerRow; j++) {
+                  const index = rowIndex * cellsPerRow + j;
                   const targetCell = grid.children[index];
                   if (!targetCell.firstChild) {
                     const b = createBlock('green');
@@ -220,16 +229,9 @@
 
       function showEquation(startingBlue, total) {
         equation.innerHTML = `${startingBlue} + <input class="answer" id="userAnswer"> = ${total}`;
-        const userAnswer = document.getElementById('userAnswer');
-
-        userAnswer.addEventListener('change', () => {
-          const value = parseInt(userAnswer.value);
-          if (value === total - startingBlue) {
-            alert('Correct!');
-          } else {
-            alert('Try again.');
-          }
-        });
+        // Store globals for check button
+        startingBlueGlobal = startingBlue;
+        totalGlobal = total;
       }
 
       function startGame(size) {
@@ -248,7 +250,6 @@
       }
 
       // Drag handlers for both mouse and touch (pointer events)
-
       function pointerDownHandler(e) {
         e.preventDefault();
         if (draggingData) return; // already dragging
@@ -313,11 +314,80 @@
       }
 
       function pointerUpHandler(e) {
-        cleanupDrag();
+        if (!draggingData) return cleanupDrag();
+
+        // Determine the cell under pointer
+        const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
+        const cell = elementsAtPoint.find(el => el.classList && el.classList.contains('cell'));
+
+        if (!cell) {
+          alert("Please drop on a valid cell!");
+          cleanupDrag();
+          return;
+        }
+
+        const color = draggingData.color;
+
+        if (filledCells >= totalCells) {
+          alert("Too many tiles!");
+          cleanupDrag();
+          return;
+        }
+
+        if (!cell.firstChild) {
+          if (color === 'green') {
+            const droppedBlock = createBlock('green');
+            cell.appendChild(droppedBlock);
+            filledCells++;
+            cleanupDrag();
+          } else if (color === 'row-green') {
+            const cellsPerRow = totalCells / rows;
+            const cellIndex = parseInt(cell.dataset.index);
+            const rowIndex = Math.floor(cellIndex / cellsPerRow);
+
+            // Check if enough free spaces for whole row
+            let freeSpaces = 0;
+            for (let j = 0; j < cellsPerRow; j++) {
+              const index = rowIndex * cellsPerRow + j;
+              if (!grid.children[index].firstChild) freeSpaces++;
+            }
+            if (freeSpaces < cellsPerRow || filledCells + cellsPerRow > totalCells) {
+              alert("Not enough space to place the 5-tile row here!");
+              cleanupDrag();
+              return;
+            }
+            // Place the row blocks
+            for (let j = 0; j < cellsPerRow; j++) {
+              const index = rowIndex * cellsPerRow + j;
+              const targetCell = grid.children[index];
+              if (!targetCell.firstChild) {
+                const b = createBlock('green');
+                targetCell.appendChild(b);
+                filledCells++;
+              }
+            }
+            cleanupDrag();
+          }
+        } else {
+          alert("Too many tiles!");
+          cleanupDrag();
+        }
       }
       function pointerCancelHandler(e) {
         cleanupDrag();
       }
+
+      // Check answer button handler
+      checkAnswerBtn.addEventListener('click', () => {
+        const userAnswer = document.getElementById('userAnswer');
+        if (!userAnswer) return;
+        const value = parseInt(userAnswer.value);
+        if (value === totalGlobal - startingBlueGlobal) {
+          alert('Correct!');
+        } else {
+          alert('Try again.');
+        }
+      });
 
       make5Btn.addEventListener('click', () => startGame(5));
       make10Btn.addEventListener('click', () => startGame(10));
