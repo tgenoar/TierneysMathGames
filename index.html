@@ -83,41 +83,7 @@
   <div class="grid" id="grid"></div>
   <div class="piles" id="piles"></div>
   <div class="equation" id="equation"></div>
-  
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-  // Make each pile a draggable container
-Sortable.create(document.getElementById('piles'), {
-  group: {
-    name: 'blocks',
-    pull: 'clone',  // copy blocks instead of moving them
-    put: false
-  },
-  sort: false  // prevent reordering inside the pile
-});
 
-// Make the grid accept blocks
-Sortable.create(document.getElementById('grid'), {
-  group: {
-    name: 'blocks',
-    pull: false,
-    put: true
-  },
-  animation: 150,
-  onAdd: function (evt) {
-    const item = evt.item;
-    item.draggable = false; // prevent further dragging
-    item.classList.remove('block'); // clean up if needed
-    item.classList.add('block');    // reapply classes if needed
-
-    // Optional: prevent overfilling
-    if (grid.querySelectorAll('.block').length > totalCells) {
-      item.remove();
-      alert('Too many blocks!');
-    }
-
-    filledCells++;
-  }
-});
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const grid = document.getElementById('grid');
@@ -134,6 +100,9 @@ Sortable.create(document.getElementById('grid'), {
         const block = document.createElement('div');
         block.className = `block ${color}`;
         block.draggable = true;
+        block.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/plain', color);
+        });
         return block;
       }
 
